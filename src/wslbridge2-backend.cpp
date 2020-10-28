@@ -304,11 +304,6 @@ int main(int argc, char *argv[])
         for (size_t i = 0; i < ARRAYSIZE(ioSockets.sock); i++)
             shutdown(ioSockets.sock[i], SHUT_RDWR);
 
-        int status;
-        wait(&status);
-        printf("signal: %d child status: %d child pid: %d\n",
-            sig, status, info->si_pid);
-
         if (debugMode)
         {
             printf("Press any key to continue...\n");
@@ -342,7 +337,11 @@ int main(int argc, char *argv[])
         do
         {
             ret = poll(fds, ARRAYSIZE(fds), -1);
-            assert(ret > 0);
+            if (ret < 0)
+            {
+                perror("poll");
+                break;
+            }
 
             /* Receive input buffer and write it to master */
             if (fds[0].revents & POLLIN)
@@ -356,7 +355,11 @@ int main(int argc, char *argv[])
             if (fds[1].revents & POLLIN)
             {
                 ret = recv(ioSockets.controlSock, &winp, sizeof winp, 0);
-                assert(ret > 0);
+                if (ret < 0)
+                {
+                    perror("recv");
+                    break;
+                }
 
                 /* Remove "unused" pixel values ioctl_tty(2) */
                 winp.ws_xpixel = 0;
@@ -461,7 +464,7 @@ int main(int argc, char *argv[])
          * Do not use exit() because it performs clean-up
          * related to user-mode constructs in the library
          */
-        _exit(0);
+        _exit(-1);
     }
     else
         perror("fork");
@@ -470,5 +473,13 @@ int main(int argc, char *argv[])
     for (size_t i = 0; i < ARRAYSIZE(ioSockets.sock); i++)
         close(ioSockets.sock[i]);
 
-    return 0;
+    int status = 0;
+    wait(&status);
+
+    if (WIFEXITED(status))
+    {
+        return WEXITSTATUS(status);
+    }
+
+    return -1;
 }

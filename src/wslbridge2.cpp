@@ -481,7 +481,8 @@ int main(int argc, char *argv[])
     if (!ret)
         fatal("SetHandleInformation: %s", GetErrorMessage(GetLastError()).c_str());
 
-    const auto watchdog = std::thread([&]() {
+    DWORD exitCode = -1;
+    auto watchdog = std::thread([&]() {
         WaitForSingleObject(pi.hProcess, INFINITE);
 
         std::vector<char> outVec = readAllFromHandle(outputPipe.rh);
@@ -499,6 +500,10 @@ int main(int argc, char *argv[])
         if (!err.empty()) {
             msg.append("note: backend error output: ");
             msg.append(err);
+        }
+
+        if (!GetExitCodeProcess(pi.hProcess, &exitCode)) {
+            exitCode = -1;
         }
 
         /* Exit with error if output/error message is not empty. */
@@ -556,11 +561,13 @@ int main(int argc, char *argv[])
     pthread_kill(tidInput, 0);
     // pthread_join(tidInput, nullptr);
 
+    watchdog.join();
+
     /* cleanup */
     for (size_t i = 0; i < ARRAYSIZE(g_ioSockets.sock); i++)
         closesocket(g_ioSockets.sock[i]);
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
     WSACleanup();
-    termState.exitCleanly(0);
+    termState.exitCleanly(exitCode);
 }
